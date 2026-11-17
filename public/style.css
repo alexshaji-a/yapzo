@@ -12,3 +12,19 @@ dialog{position:fixed;inset:0;margin:auto;width:min(500px,calc(100vw - 30px));ma
 @media(max-width:600px){.shell{padding:0 16px}header{height:68px;gap:9px}.brand{font-size:19px}.brand .mark{font-size:21px;margin-right:3px}.account-open{padding:9px 10px;font-size:11px}.topnote{font-size:9px}.intro h1{font-size:clamp(35px,9vw,48px)}.intro p{font-size:13px}.featurebar{gap:8px 12px}.featurebar span{font-size:10px}.discovery h2{font-size:21px}.chat{border-radius:19px}.chathead{padding:13px;min-height:73px}.avatar{width:40px;height:40px}.secure{font-size:8px;padding:6px}.messages{height:340px;padding:15px}.composer{padding:11px}.actions{padding:0 11px 12px;gap:7px}.actions button{font-size:11px;padding:10px}.actions .primary{min-width:130px}.suite-grid{grid-template-columns:1fr}.suite-grid p{min-height:0}.social-suite{padding-top:55px}.modal{padding:42px 22px 25px}.modal .modal-close{top:14px;right:14px}.suite-form input{font-size:16px}}
 @media(max-width:380px){.topnote{display:none}.actions .primary{flex-basis:100%}}
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation:none!important;transition:none!important}}
+
+/* YAPZO Signature V9: restrained iconography and disciplined mobile layout */
+.ui-icon{display:inline-block;width:17px;height:17px;vertical-align:-3px;flex:none;stroke:currentColor}
+.brand .mark{display:inline-grid;place-items:center;width:33px;height:33px;margin-right:9px;border-radius:10px;background:#d6c2f0;color:#17111f!important;-webkit-text-fill-color:#17111f!important;font:800 19px/1 Manrope,sans-serif;letter-spacing:-.06em;vertical-align:middle}
+.feature-icon .ui-icon,.suite-icon .ui-icon{width:20px;height:20px}
+.avatar .ui-icon{width:22px;height:22px}.welcomeicon .ui-icon{width:30px;height:30px}
+.interest{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:40px;transition:background .18s,border-color .18s,transform .18s}
+.interest:hover{transform:translateY(-1px)}
+.account-open{display:inline-flex;align-items:center;justify-content:center;gap:7px}
+.actions button,.suite-grid button{display:inline-flex;align-items:center;justify-content:center;gap:7px}
+.composer button{display:grid;place-items:center}.composer button .ui-icon{width:20px;height:20px}
+.suite-icon{display:inline-grid;place-items:center;width:42px;height:42px;border-radius:12px;background:#d6c2f00d;border:1px solid #d6c2f033}
+.suite-icon .ui-icon{width:21px;height:21px}
+.modal .modal-close .ui-icon{width:18px;height:18px}
+.chat,.suite-grid article,dialog{box-shadow:0 24px 70px #0005}
+@media(max-width:600px){.brand .mark{width:29px;height:29px;font-size:17px;margin-right:5px}.topnote{display:none}.account-open{margin-left:auto}.featurebar{gap:12px}.featurebar span{font-size:11px}.chathead .secure{display:none}.actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.actions .primary{min-width:0;grid-column:1/-1}.actions button{min-width:0}.suite-grid article{padding:21px}.modal .modal-close{top:14px;right:14px}}
