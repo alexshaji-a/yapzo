@@ -34,3 +34,17 @@ dialog{position:fixed;inset:0;margin:auto;width:min(500px,calc(100vw - 30px));ma
 @media(max-width:600px){.brand .mark{font-size:25px!important;margin-right:5px!important}}
 .avatar .ui-icon,.welcomeicon .ui-icon{width:25px;height:25px}
 .welcomeicon .ui-icon{width:32px;height:32px}
+
+/* Signature V11 — precision-aligned star and atmospheric editorial watermark. */
+.brand,.brand:link,.brand:visited{display:inline-flex!important;align-items:center!important;gap:0!important;line-height:1!important;min-height:42px}
+.brand .mark{display:inline-flex!important;align-items:center!important;justify-content:center!important;flex:0 0 34px!important;width:34px!important;height:34px!important;font-family:Arial,system-ui,sans-serif!important;font-size:29px!important;line-height:1!important;margin:0 10px 0 0!important;transform:translateY(-1px);font-weight:400!important}
+.brand .dot{align-self:center!important}
+/* The watermark sits behind the introduction, never over readable copy. */
+.intro{position:relative;isolation:isolate}
+.intro:before{content:'YAPZO';position:absolute;z-index:-1;left:-.06em;top:-.34em;font:800 clamp(120px,18vw,285px)/1 'Manrope',sans-serif;letter-spacing:-.105em;white-space:nowrap;color:rgba(205,184,244,.055);pointer-events:none;user-select:none;-webkit-user-select:none;transform:translateX(-.025em)}
+.intro:after{content:'';position:absolute;z-index:-2;width:min(55vw,620px);height:410px;left:-19%;top:-120px;background:radial-gradient(ellipse,rgba(151,100,164,.13),rgba(90,52,110,.055) 42%,transparent 70%);filter:blur(28px);pointer-events:none}
+.intro h1{position:relative;text-shadow:0 8px 60px rgba(0,0,0,.22)}
+.intro h1 em{background-image:linear-gradient(108deg,#f7eee9 5%,#e2c8e5 42%,#b8a0dc 70%,#e0c9a6 100%)}
+.chat{box-shadow:0 42px 110px rgba(0,0,0,.54),0 0 90px rgba(136,91,158,.075);border-color:#54435b}
+@media(max-width:900px){.intro:before{left:50%;top:-.3em;transform:translateX(-50%);font-size:clamp(110px,22vw,220px);letter-spacing:-.11em}.intro:after{left:50%;transform:translateX(-50%)}}
+@media(max-width:600px){.brand{min-height:36px}.brand .mark{flex-basis:27px!important;width:27px!important;height:27px!important;font-size:24px!important;margin-right:6px!important}.intro:before{top:-.15em;font-size:clamp(88px,23vw,145px);color:rgba(205,184,244,.047)}.intro:after{width:100%;height:280px;top:-70px}}
