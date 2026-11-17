@@ -1,33 +1,57 @@
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
-const crypto = require('crypto');
-const WebSocket = require('ws');
-const PORT = process.env.PORT || 3000;
-const root = path.join(__dirname, 'public');
-const types = {'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml'};
-const server = http.createServer((req,res)=>{
-  const pathname = decodeURIComponent(new URL(req.url,'http://localhost').pathname);
-  const file = path.resolve(root, '.' + (pathname === '/' ? '/index.html' : pathname));
-  if(!file.startsWith(root + path.sep)) {res.writeHead(403);return res.end('Forbidden');}
-  fs.readFile(file,(err,data)=>{if(err){res.writeHead(404);return res.end('Not found');}res.writeHead(200,{'Content-Type':types[path.extname(file)]||'application/octet-stream','X-Content-Type-Options':'nosniff','Cache-Control':'no-store','Content-Security-Policy':"default-src 'self'; connect-src 'self' ws: wss:; style-src 'self'; script-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'"});res.end(data);});
-});
-const wss = new WebSocket.Server({server,maxPayload:4096});
-const clients = new Map();
-const waiting = [];
-const reports = [];
-const broadcastOnline = ()=>{for(const client of wss.clients)send(client,{type:'online',count:wss.clients.size});};
-const send = (ws,obj)=>{if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(obj));};
-function removeQueue(ws){let i;while((i=waiting.indexOf(ws))!==-1)waiting.splice(i,1);}
-function disconnect(ws,notify=true){const c=clients.get(ws);if(!c)return;removeQueue(ws);if(c.partner){const p=c.partner;c.partner=null;const pc=clients.get(p);if(pc&&pc.partner===ws){pc.partner=null;if(notify)send(p,{type:'left'});}}}
-function match(ws){const c=clients.get(ws);if(!c)return;disconnect(ws);while(waiting.length){const other=waiting.shift();const oc=clients.get(other);if(other!==ws&&other.readyState===WebSocket.OPEN&&oc&&!oc.partner&&oc.searching){c.partner=other;oc.partner=ws;c.searching=false;oc.searching=false;send(ws,{type:'matched'});send(other,{type:'matched'});return;}}c.searching=true;waiting.push(ws);send(ws,{type:'waiting',online:wss.clients.size});}
-const blocked = /\b(?:https?:\/\/|www\.)\S+/i;
-wss.on('connection',(ws)=>{clients.set(ws,{id:crypto.randomUUID(),partner:null,searching:false,times:[],strikes:0});send(ws,{type:'ready'});broadcastOnline();ws.on('message',(raw)=>{let msg;try{msg=JSON.parse(raw.toString())}catch{return;}const c=clients.get(ws);if(!c||typeof msg.type!=='string')return;
- if(msg.type==='typing'){if(c.partner)send(c.partner,{type:'typing',active:msg.active===true});return;}
- if(msg.type==='find'){match(ws);return;}
- if(msg.type==='stop'){disconnect(ws);c.searching=false;removeQueue(ws);send(ws,{type:'stopped'});return;}
- if(msg.type==='next'){match(ws);return;}
- if(msg.type==='report'){if(c.partner){const pc=clients.get(c.partner);reports.push({time:new Date().toISOString(),reporter:c.id,reported:pc?.id||'unknown',reason:String(msg.reason||'unspecified').slice(0,100)});if(reports.length>1000)reports.shift();}match(ws);send(ws,{type:'reported'});return;}
- if(msg.type==='message'&&c.partner){const value=typeof msg.text==='string'?msg.text.trim():'';if(!value||value.length>1000)return;const now=Date.now();c.times=c.times.filter(t=>now-t<10000);if(c.times.length>=8){send(ws,{type:'error',message:'Please slow down.'});return;}c.times.push(now);if(blocked.test(value)){send(ws,{type:'error',message:'Links are not allowed in this chat.'});return;}send(c.partner,{type:'message',text:value});send(ws,{type:'sent',text:value});}
- });ws.on('close',()=>{disconnect(ws);removeQueue(ws);clients.delete(ws);broadcastOnline();});ws.on('error',()=>{});});
-server.listen(PORT,()=>console.log(`Stranger Chat running on http://localhost:${PORT}`));
+'use strict';
+const http=require('http'),fs=require('fs'),path=require('path'),crypto=require('crypto');
+const WebSocket=require('ws'),bcrypt=require('bcryptjs');
+const {Pool}=require('pg');
+const PORT=Number(process.env.PORT)||3000,ROOT=path.join(__dirname,'public');
+const pool=process.env.DATABASE_URL?new Pool({connectionString:process.env.DATABASE_URL,ssl:process.env.DATABASE_URL.includes('localhost')?false:{rejectUnauthorized:false}}):null;
+const sessions=new Map(),guests=new Map(),clients=new Map(),waiting=[],reports=[];
+const interests=new Set(['surprise','music','gaming','movies','travel','books','technology','life']);
+const json=(res,status,obj)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(obj))};
+const uid=()=>crypto.randomUUID(),token=()=>crypto.randomBytes(32).toString('hex');
+const clean=s=>String(s||'').trim(),send=(ws,obj)=>{if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(obj))};
+const getCookie=req=>Object.fromEntries((req.headers.cookie||'').split(';').map(x=>x.trim().split('=').map(decodeURIComponent)).filter(x=>x.length===2));
+const identity=req=>sessions.get(getCookie(req).yapzo_session)||null;
+const setCookie=(res,t)=>res.setHeader('Set-Cookie',`yapzo_session=${encodeURIComponent(t)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800${process.env.NODE_ENV==='production'?'; Secure':''}`);
+async function query(sql,args=[]){if(!pool)throw Error('Database is not configured');return pool.query(sql,args)}
+async function init(){if(!pool)return;await query(`CREATE TABLE IF NOT EXISTS members(id UUID PRIMARY KEY,username VARCHAR(24) UNIQUE NOT NULL,password_hash TEXT NOT NULL,language VARCHAR(12) NOT NULL DEFAULT 'en',created_at TIMESTAMPTZ DEFAULT now(),premium_until TIMESTAMPTZ);CREATE TABLE IF NOT EXISTS friendships(a UUID NOT NULL,b UUID NOT NULL,status VARCHAR(12) NOT NULL DEFAULT 'pending',requested_by UUID,created_at TIMESTAMPTZ DEFAULT now(),PRIMARY KEY(a,b));CREATE TABLE IF NOT EXISTS abuse_reports(id UUID PRIMARY KEY,reporter TEXT,reported TEXT,reason TEXT NOT NULL,excerpt TEXT,created_at TIMESTAMPTZ DEFAULT now());CREATE TABLE IF NOT EXISTS subscriptions(user_id UUID PRIMARY KEY,customer_id TEXT,subscription_id TEXT,status TEXT,updated_at TIMESTAMPTZ DEFAULT now());ALTER TABLE friendships ADD COLUMN IF NOT EXISTS requested_by UUID;`);console.log('Database ready')}
+const apiLimit=new Map();function limited(req){const ip=(req.headers['x-forwarded-for']||req.socket.remoteAddress||'').toString().split(',')[0];const now=Date.now(),v=(apiLimit.get(ip)||[]).filter(t=>now-t<60000);v.push(now);apiLimit.set(ip,v);return v.length>35}
+async function body(req){let str='';for await(const part of req){str+=part;if(str.length>16000)throw Error('Request too large')}return JSON.parse(str||'{}')}
+const me=async(req)=>{const s=identity(req);if(!s)return null;if(!pool)return null;const r=await query('SELECT id,username,language,premium_until FROM members WHERE id=$1',[s.id]);return r.rows[0]||null};
+async function api(req,res,url){if(limited(req))return json(res,429,{error:'Too many requests'});
+ if(req.method==='GET'&&url.pathname==='/api/config')return json(res,200,{accounts:!!pool,translation:!!process.env.TRANSLATE_URL,payments:false,mode:'private-test'});
+ if(req.method==='GET'&&url.pathname==='/api/me')return json(res,200,{user:await me(req)});
+ if(req.method==='POST'&&url.pathname==='/api/logout'){const t=getCookie(req).yapzo_session;sessions.delete(t);res.setHeader('Set-Cookie','yapzo_session=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0');return json(res,200,{ok:true})}
+ if(req.method==='POST'&&['/api/register','/api/login'].includes(url.pathname)){
+  if(!pool)return json(res,503,{error:'Accounts require DATABASE_URL'});
+  const d=await body(req),name=clean(d.username).toLowerCase(),pass=String(d.password||'');
+  if(!/^[a-z0-9_]{3,24}$/.test(name)||pass.length<10||pass.length>128)return json(res,400,{error:'Username: 3–24 letters, numbers or _. Password: 10+ characters.'});
+  let user;
+  if(url.pathname==='/api/register'){
+   try{const r=await query('INSERT INTO members(id,username,password_hash) VALUES($1,$2,$3) RETURNING id,username,language',[uid(),name,await bcrypt.hash(pass,12)]);user=r.rows[0]}catch(e){if(e.code==='23505')return json(res,409,{error:'Username already taken'});throw e}
+  }else{const r=await query('SELECT * FROM members WHERE username=$1',[name]);if(!r.rows[0]||!await bcrypt.compare(pass,r.rows[0].password_hash))return json(res,401,{error:'Invalid login'});user=r.rows[0]}
+  const t=token();sessions.set(t,{id:user.id,created:Date.now()});setCookie(res,t);return json(res,200,{user:{id:user.id,username:user.username,language:user.language}})
+ }
+ if(req.method==='POST'&&url.pathname==='/api/language'){const user=await me(req);if(!user)return json(res,401,{error:'Sign in first'});const d=await body(req),lang=clean(d.language);if(!/^[a-z]{2,3}(-[A-Z]{2})?$/.test(lang))return json(res,400,{error:'Invalid language'});await query('UPDATE members SET language=$1 WHERE id=$2',[lang,user.id]);return json(res,200,{ok:true})}
+ if(req.method==='GET'&&url.pathname==='/api/friends'){const user=await me(req);if(!user)return json(res,401,{error:'Sign in first'});const r=await query(`SELECT f.status,m.username,m.id FROM friendships f JOIN members m ON m.id=CASE WHEN f.a=$1 THEN f.b ELSE f.a END WHERE f.a=$1 OR f.b=$1 ORDER BY f.created_at DESC LIMIT 100`,[user.id]);return json(res,200,{friends:r.rows})}
+ if(req.method==='POST'&&url.pathname==='/api/friends/request'){const user=await me(req);if(!user)return json(res,401,{error:'Sign in first'});const d=await body(req),name=clean(d.username).toLowerCase();const r=await query('SELECT id FROM members WHERE username=$1',[name]);if(!r.rows[0]||r.rows[0].id===user.id)return json(res,404,{error:'User not found'});const a=[user.id,r.rows[0].id].sort();await query('INSERT INTO friendships(a,b,status,requested_by) VALUES($1,$2,$3,$4) ON CONFLICT(a,b) DO NOTHING',[...a,'pending',user.id]);return json(res,200,{ok:true,note:'Friend request saved. Mutual approval is required.'})}
+ if(req.method==='POST'&&url.pathname==='/api/friends/accept'){const user=await me(req);if(!user)return json(res,401,{error:'Sign in first'});const d=await body(req),name=clean(d.username).toLowerCase();const r=await query('SELECT id FROM members WHERE username=$1',[name]);if(!r.rows[0])return json(res,404,{error:'User not found'});const a=[user.id,r.rows[0].id].sort();const q=await query('UPDATE friendships SET status=$3 WHERE a=$1 AND b=$2 AND status=$4 AND requested_by<>$5 RETURNING a',[...a,'accepted','pending',user.id]);return json(res,q.rowCount?200:404,{ok:!!q.rowCount})}
+ if(req.method==='POST'&&url.pathname==='/api/translate'){if(!process.env.TRANSLATE_URL)return json(res,503,{error:'Translation provider not configured'});const d=await body(req),user=await me(req);if(!user)return json(res,401,{error:'Sign in to translate'});const txt=clean(d.text),target=clean(d.target||user.language);if(!txt||txt.length>1000||!/^[a-z]{2,3}$/.test(target))return json(res,400,{error:'Invalid translation request'});const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),8000);try{const r=await fetch(process.env.TRANSLATE_URL,{method:'POST',headers:{'Content-Type':'application/json',...(process.env.TRANSLATE_API_KEY?{'Authorization':'Bearer '+process.env.TRANSLATE_API_KEY}:{})},body:JSON.stringify({q:txt,source:'auto',target,format:'text'}),signal:controller.signal});if(!r.ok)throw Error('Translation service unavailable');const x=await r.json();return json(res,200,{translated:x.translatedText||x.translation||''})}finally{clearTimeout(timeout)}}
+ if(req.method==='POST'&&url.pathname==='/api/checkout'){const user=await me(req);if(!user)return json(res,401,{error:'Sign in first'});return json(res,503,{error:'Premium billing is not yet enabled. Webhook verification and entitlement management are required before accepting payments.'}); /* Billing intentionally disabled pending verified webhook implementation */ if(!process.env.STRIPE_SECRET_KEY||!process.env.STRIPE_PRICE_ID)return json(res,503,{error:'Premium checkout is not configured'});const stripe=require('stripe')(process.env.STRIPE_SECRET_KEY);const origin=process.env.PUBLIC_URL;if(!origin||!origin.startsWith('https://'))return json(res,503,{error:'PUBLIC_URL must be configured'});const session=await stripe.checkout.sessions.create({mode:'subscription',line_items:[{price:process.env.STRIPE_PRICE_ID,quantity:1}],client_reference_id:user.id,success_url:origin+'/?checkout=success',cancel_url:origin+'/?checkout=cancel'});return json(res,200,{url:session.url})}
+ return json(res,404,{error:'Not found'})
+}
+const types={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml'};
+const server=http.createServer(async(req,res)=>{let url;try{url=new URL(req.url,'http://localhost')}catch{return json(res,400,{error:'Bad request'})}try{if(url.pathname.startsWith('/api/'))return await api(req,res,url);if(req.method!=='GET')return json(res,405,{error:'Method not allowed'});const p=path.resolve(ROOT,'.'+(url.pathname==='/'?'/index.html':decodeURIComponent(url.pathname)));if(!p.startsWith(ROOT+path.sep))return json(res,403,{error:'Forbidden'});fs.readFile(p,(err,data)=>{if(err)return json(res,404,{error:'Not found'});res.writeHead(200,{'Content-Type':types[path.extname(p)]||'application/octet-stream','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'self'; connect-src 'self' ws: wss: https:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'",'Referrer-Policy':'no-referrer'});res.end(data)})}catch(e){console.error('Request failed',e.message);json(res,500,{error:'Something went wrong'})}});
+const wss=new WebSocket.Server({server,maxPayload:4096});
+function remove(ws){let i;while((i=waiting.indexOf(ws))!==-1)waiting.splice(i,1)}
+function disconnect(ws){const c=clients.get(ws);if(!c)return;remove(ws);c.searching=false;if(c.partner){const p=c.partner;c.partner=null;const pc=clients.get(p);if(pc&&pc.partner===ws){pc.partner=null;send(p,{type:'left'})}}}
+function match(ws,interest){const c=clients.get(ws);if(!c)return;const now=Date.now();if(now-c.lastFind<800)return send(ws,{type:'error',message:'Please wait a moment'});c.lastFind=now;disconnect(ws);c.interest=interests.has(interest)?interest:'surprise';c.searching=true;for(let i=0;i<waiting.length;i++){const p=waiting[i],o=clients.get(p);if(!o||p.readyState!==1||!o.searching){waiting.splice(i--,1);continue}if(p===ws||c.blocked.has(o.id)||o.blocked.has(c.id)||!(c.interest==='surprise'||o.interest==='surprise'||c.interest===o.interest))continue;waiting.splice(i,1);c.partner=p;o.partner=ws;c.searching=o.searching=false;send(ws,{type:'matched',interest:c.interest});send(p,{type:'matched',interest:o.interest});return}waiting.push(ws);send(ws,{type:'waiting'})}
+function broadcast(){for(const ws of clients.keys())send(ws,{type:'online',count:clients.size})}
+const link=/\b(?:https?:\/\/|www\.)\S+/i;
+wss.on('connection',(ws,req)=>{const c={id:uid(),partner:null,searching:false,blocked:new Set(),times:[],lastFind:0,interest:'surprise',recent:[],user:identity(req)?.id||null};clients.set(ws,c);send(ws,{type:'ready'});broadcast();ws.on('message',async raw=>{let m;try{m=JSON.parse(raw.toString())}catch{return}if(!m||typeof m.type!=='string')return;
+ if(m.type==='find'||m.type==='next')return match(ws,m.interest);
+ if(m.type==='stop'){disconnect(ws);return send(ws,{type:'stopped'})}
+ if(m.type==='typing'){if(c.partner)send(c.partner,{type:'typing',active:m.active===true});return}
+ if(m.type==='block'||m.type==='report'){const o=c.partner?clients.get(c.partner):null;if(o)c.blocked.add(o.id);if(m.type==='report'&&o){const reason=clean(m.reason).slice(0,250)||'Unspecified',r={id:uid(),reporter:c.user||c.id,reported:o.user||o.id,reason,excerpt:o.recent.slice(-5).join('\n').slice(0,2000)};reports.push(r);if(reports.length>500)reports.shift();if(pool)query('INSERT INTO abuse_reports(id,reporter,reported,reason,excerpt) VALUES($1,$2,$3,$4,$5)',[r.id,r.reporter,r.reported,r.reason,r.excerpt]).catch(e=>console.error('Report save failed',e.message))}disconnect(ws);send(ws,{type:m.type==='report'?'reported':'stopped'});return}
+ if(m.type==='message'&&c.partner){const txt=clean(m.text);if(!txt||txt.length>1000)return;const now=Date.now();c.times=c.times.filter(t=>now-t<10000);if(c.times.length>=8)return send(ws,{type:'error',message:'Please slow down'});c.times.push(now);if(link.test(txt))return send(ws,{type:'error',message:'Links are not allowed'});c.recent.push(txt);if(c.recent.length>5)c.recent.shift();send(c.partner,{type:'message',text:txt});send(ws,{type:'sent',text:txt})}
+ });ws.on('close',()=>{disconnect(ws);clients.delete(ws);broadcast()});ws.on('error',()=>{})});
+init().then(()=>server.listen(PORT,'0.0.0.0',()=>console.log('YAPZO listening on '+PORT))).catch(e=>{console.error('Database initialization failed',e);process.exit(1)});

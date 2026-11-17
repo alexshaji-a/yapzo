@@ -1,32 +1,34 @@
-## Version 2 changes
+# YAPZO — One-deployment integrated beta (V6)
 
-Premium purple UI, online WebSocket connection counter, real-time typing indicator, and improved status presentation. Online count reflects active socket connections, not verified unique people. Typing indicators are ephemeral.
+A premium-styled anonymous text chat prototype with random and interest matching, online count, typing indicators, reporting and blocking, optional account and friendship APIs, translation integration, and a Plus preview.
 
-# YAPZO — worldwide anonymous text chat (MVP)
+## Deploy to your existing Render Web Service
 
-A functioning Node.js + WebSocket random text chat prototype with a modern mobile-friendly interface.
+1. Upload **the contents of this folder** to the root of your existing GitHub repository (not the ZIP file itself). Preserve the `public/` directory structure and replace existing files.
+2. Ensure `package.json`, `server.js`, `public/index.html`, `public/style.css`, and `public/app.js` are all committed together. GitHub's browser uploader may not overwrite files; use GitHub Desktop or Git to commit replacements if needed.
+3. Render: Node 20+, build `npm install`, start `npm start`. Leave Root Directory blank. Keep **one web service instance** for this in-memory chat matchmaking implementation.
+4. Commit once and verify the Render deploy succeeds. Test two browsers before sharing the link.
 
-## Run
+## Optional integrations and limitations
 
-Requires Node.js 18+. Run `npm install` then `npm start` and visit http://localhost:3000 in two separate browsers. Press Find a stranger on both to test real-time matching.
+- **Anonymous chat** works immediately without credentials. Interest matching, live connection count, typing indicators, report/block and rate limiting are included.
+- **Accounts and friend requests** require a PostgreSQL connection set as `DATABASE_URL` in Render's environment settings. Tables are initialized on startup. Without it, the chat works but account endpoints return an explicit configuration error. Database plans may cost money; check your provider's limits and retention.
+- **Translation** is on-demand via a compatible LibreTranslate-style endpoint. Set `TRANSLATE_URL` and optionally `TRANSLATE_API_KEY`. This is **not** automatic translation of every message and could incur charges. Translation requires login.
+- **YAPZO Plus** is a preview only. Payments are intentionally disabled until subscription webhooks, cancellations, refunds, entitlement checks and terms are properly implemented. No paid features are being sold.
+- **Sessions are stored in process memory** and are lost on restart. Production accounts need durable session storage and session invalidation; passwords are bcrypt-hashed in PostgreSQL.
+- **Friend requests** are username-based, not linked to anonymous matches, to avoid exposing the other person's identity without consent. A friend chat/inbox is **not** implemented.
+- **Reports** persist only if `DATABASE_URL` is configured. They are not actively reviewed. The 18+ checkbox is self-attestation, **not age verification**.
+- The online count represents active WebSocket connections, not unique humans. No user history is retained for anonymous conversations other than short report excerpts.
+- This is a **controlled beta, not a public-ready anonymous social platform**. Before public release: independent age assurance, dedicated moderation operations, report review dashboard, abuse escalation, stronger bot prevention, privacy/terms, deletion and retention processes, proper audit logs, security review, database migrations, and multi-instance matchmaking infrastructure.
 
-## Implemented
+## Local test
 
-- Anonymous random 1:1 real-time text matching, next, end, report
-- Basic link blocking, message rate limiting and message length cap
-- Mobile-friendly interface, 18+ self-attestation gate and safety tips
+`npm install && npm start` then open `http://localhost:3000` in two browsers. Run `npm run check` for syntax checks.
 
-## NOT implemented yet
+## Deploy configuration
 
-Accounts, friends, interest filters, translation, subscriptions, payments, ads, and persistent reporting/moderation are **future phases**. The landing page marks them as planned.
+- Required: `PORT` is supplied by Render; no other variables required for anonymous chat.
+- Optional: `DATABASE_URL`, `TRANSLATE_URL`, `TRANSLATE_API_KEY`.
+- Set `NODE_ENV=production` for secure cookies over HTTPS.
 
-## Important before public launch
-
-The current 18+ checkbox is **not age verification**. Reporting is only held in process memory and is not reviewed by moderators. Build a durable abuse-report pipeline, human moderation, user blocking, robust age assurance, privacy/terms policies, data retention rules, anti-bot protection, secure deployment (HTTPS/WSS), and monitoring before inviting strangers. Avoid claiming this prototype is safe for public use.
-
-## Premium visual edition
-The `public/style.css` file includes a premium responsive redesign. The WebSocket protocol, matching logic, and server behavior are unchanged from V2. Replace existing repository files (especially `public/style.css`) to deploy this look. This remains a test prototype, not a public-safe moderated platform.
-
-
-## Version 4: Atelier luxury redesign
-Update public/index.html and public/style.css together; app.js and server.js unchanged. No new server dependencies. The existing 18+ gate is self-attestation only and is not adequate for a public launch.
+Do not commit credentials to GitHub. Configure secrets only in Render's Environment settings.
