@@ -1,3 +1,7 @@
+## Version 2 changes
+
+Premium purple UI, online WebSocket connection counter, real-time typing indicator, and improved status presentation. Online count reflects active socket connections, not verified unique people. Typing indicators are ephemeral.
+
 # YAPZO — worldwide anonymous text chat (MVP)
 
 A functioning Node.js + WebSocket random text chat prototype with a modern mobile-friendly interface.
