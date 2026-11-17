@@ -23,3 +23,10 @@ Accounts, friends, interest filters, translation, subscriptions, payments, ads, 
 ## Important before public launch
 
 The current 18+ checkbox is **not age verification**. Reporting is only held in process memory and is not reviewed by moderators. Build a durable abuse-report pipeline, human moderation, user blocking, robust age assurance, privacy/terms policies, data retention rules, anti-bot protection, secure deployment (HTTPS/WSS), and monitoring before inviting strangers. Avoid claiming this prototype is safe for public use.
+
+## Premium visual edition
+The `public/style.css` file includes a premium responsive redesign. The WebSocket protocol, matching logic, and server behavior are unchanged from V2. Replace existing repository files (especially `public/style.css`) to deploy this look. This remains a test prototype, not a public-safe moderated platform.
+
+
+## Version 4: Atelier luxury redesign
+Update public/index.html and public/style.css together; app.js and server.js unchanged. No new server dependencies. The existing 18+ gate is self-attestation only and is not adequate for a public launch.
